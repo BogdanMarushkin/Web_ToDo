@@ -1,51 +1,18 @@
 from fastapi import FastAPI, status, Depends
-from pydantic import BaseModel
-from uuid import uuid4
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+from lifespan import lifespan
+from db import TaskORM, TaskSchema, TaskCreate, TaskUpdate, SessionLocal
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, String, select
-from sqlalchemy.orm import sessionmaker, DeclarativeBase, mapped_column, Mapped, Session
-from contextlib import asynccontextmanager
-
-DB_URL = "postgresql+psycopg://postgres:admin@127.0.0.1:15432/postgres"
-engine = create_engine(DB_URL)
-SessionLocal = sessionmaker(bind=engine)
-
-class Base(DeclarativeBase):
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    
-class TaskORM(Base):
-    __tablename__ = "tasks"
-    title: Mapped[str] 
-    done: Mapped[bool] = mapped_column(default=False)
-    
- 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    Base.metadata.create_all(engine)
-    yield
 
 
 app = FastAPI(lifespan=lifespan)
 
-app.add_middleware(
+app.add_middleware (
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
-    allow_methods=["*"],
+    allow_methods=["*"]
 )
-
-tasks: list[TaskSchema] = []
-
-class TaskSchema(BaseModel):
-    id: str
-    title: str
-    done: bool
-    
-class TaskCreate(BaseModel):
-    title: str
-    
-class TaskUpdate(BaseModel):
-    title: str | None = None
-    done: bool | None = None
 
 def get_db():
     db = SessionLocal()
@@ -56,6 +23,7 @@ def get_db():
         
 
 def task_orm_to_model(task_orm: TaskORM) -> TaskSchema:
+    
     return TaskSchema(id=task_orm.id, title=task_orm.title, done=task_orm.done)
 
 
