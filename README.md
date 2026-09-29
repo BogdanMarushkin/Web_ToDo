@@ -16,3 +16,16 @@ uvicorn main:app --port 8080 --reload
 А затем запустить бд облачно:  
 *docker exec -it pg-container psql -U postgres postgres*
 
+28.09.2026
+Добавлен **docker-compose.yml**  
+Теперь весь проект (БД, бэкенд, фронтенд) можно поднять одной командой из корня репозитория:  
+*docker compose up -d*
+
+После этого:
+- фронтенд доступен на *http://localhost:3000*
+- бэкенд (FastAPI) доступен на *http://localhost:8080*
+- PostgreSQL доступна на *localhost:15432*
+
+Остановить и удалить контейнеры:  
+*docker compose down*
+

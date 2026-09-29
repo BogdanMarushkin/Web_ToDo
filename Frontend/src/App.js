@@ -9,7 +9,7 @@ function getTaskTitle(task) {
 }
 
 function getTaskCompleted(task) {
-  return Boolean(task.completed ?? task.is_done ?? false);
+  return Boolean(task.done ?? task.completed ?? task.is_done ?? false);
 }
 
 function getCategoryName(category) {
@@ -92,7 +92,7 @@ function App() {
           patchData.title = title;
         }
         if (!editingTaskOriginal || isCompleted !== editingTaskOriginal.completed) {
-          patchData.completed = isCompleted;
+          patchData.done = isCompleted;
         }
 
         if (Object.keys(patchData).length === 0) {
@@ -175,7 +175,7 @@ function App() {
   const handleToggleCompleted = async (task) => {
     try {
       await axios.patch(`${API_BASE_URL}/tasks/${task.id}`, {
-        completed: !getTaskCompleted(task),
+        done: !getTaskCompleted(task),
       });
       fetchTasks();
     } catch (error) {

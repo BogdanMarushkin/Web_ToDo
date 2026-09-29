@@ -1,9 +1,11 @@
+import os
+
 from sqlalchemy import create_engine, String
 from pydantic import BaseModel
 from sqlalchemy.orm import sessionmaker, Mapped, mapped_column, DeclarativeBase
 from uuid import uuid4
 
-DB_URL = "postgresql+psycopg://postgres:admin@127.0.0.1:15432/postgres"
+DB_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://postgres:admin@127.0.0.1:15432/postgres")
 engine = create_engine(DB_URL)
 SessionLocal = sessionmaker(bind=engine)
 
@@ -27,3 +29,17 @@ class TaskCreate(BaseModel):
 class TaskUpdate(BaseModel):
     title: str | None = None
     done: bool | None = None
+    
+class CategoryORM(Base):
+    __tablename__ = "categories"
+    name: Mapped[str]
+    
+class CategoryGetSchema(BaseModel):
+    id: str
+    name: str
+
+class CategoryCreateSchema(BaseModel):
+    name: str
+    
+class CategoryUpdateSchema(BaseModel):
+    name: str | None = None
