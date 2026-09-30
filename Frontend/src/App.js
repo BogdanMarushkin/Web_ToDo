@@ -12,6 +12,26 @@ function getTaskCompleted(task) {
   return Boolean(task.done ?? task.completed ?? task.is_done ?? false);
 }
 
+function getTaskCategoryId(task) {
+  return task.category_id ?? task.category?.id ?? '';
+}
+
+// Имя категории: сначала из самой задачи (если бэкенд вложил объект), затем из списка категорий
+function getTaskCategoryLabel(task, categoryNameById) {
+  const categoryId = getTaskCategoryId(task);
+  if (!categoryId) return '';
+  return (
+    task.category?.name ??
+    task.category_name ??
+    categoryNameById.get(categoryId) ??
+    'Неизвестная категория'
+  );
+}
+
+function completedPayload(value) {
+  return { completed: value };
+}
+
 function getCategoryName(category) {
   return category.name ?? category.title ?? '';
 }
@@ -28,6 +48,8 @@ function App() {
 
   const [taskTitle, setTaskTitle] = useState('');
   const [isCompleted, setIsCompleted] = useState(false);
+  const [taskCategoryId, setTaskCategoryId] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [tasks, setTasks] = useState([]);
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editingTaskOriginal, setEditingTaskOriginal] = useState(null);
@@ -39,8 +61,19 @@ function App() {
   const [editingCategoryOriginal, setEditingCategoryOriginal] = useState(null);
   const [categoryStatusMessage, setCategoryStatusMessage] = useState('');
 
-  const completedCount = tasks.filter((task) => getTaskCompleted(task)).length;
-  const pendingCount = tasks.length - completedCount;
+  const categoryNameById = new Map(
+    categories.map((category) => [category.id, getCategoryName(category)])
+  );
+
+  const visibleTasks = tasks.filter((task) => {
+    if (categoryFilter === 'all') return true;
+    const categoryId = getTaskCategoryId(task);
+    if (categoryFilter === 'none') return !categoryId;
+    return categoryId === categoryFilter;
+  });
+
+  const completedCount = visibleTasks.filter((task) => getTaskCompleted(task)).length;
+  const pendingCount = visibleTasks.length - completedCount;
 
   useEffect(() => {
     fetchTasks();
@@ -70,6 +103,7 @@ function App() {
   const resetTaskForm = () => {
     setTaskTitle('');
     setIsCompleted(false);
+    setTaskCategoryId('');
     setEditingTaskId(null);
     setEditingTaskOriginal(null);
   };
@@ -92,7 +126,11 @@ function App() {
           patchData.title = title;
         }
         if (!editingTaskOriginal || isCompleted !== editingTaskOriginal.completed) {
-          patchData.done = isCompleted;
+          Object.assign(patchData, completedPayload(isCompleted));
+        }
+        if (!editingTaskOriginal || taskCategoryId !== editingTaskOriginal.categoryId) {
+          // Пустая строка = "без категории" -> отправляем null
+          patchData.category_id = taskCategoryId || null;
         }
 
         if (Object.keys(patchData).length === 0) {
@@ -103,7 +141,11 @@ function App() {
         await axios.patch(`${API_BASE_URL}/tasks/${editingTaskId}`, patchData);
         setTaskStatusMessage('Задача обновлена');
       } else {
-        await axios.post(`${API_BASE_URL}/tasks`, { title });
+        const payload = { title };
+        if (taskCategoryId) {
+          payload.category_id = taskCategoryId;
+        }
+        await axios.post(`${API_BASE_URL}/tasks`, payload);
         setTaskStatusMessage('Задача создана');
       }
 
@@ -150,13 +192,16 @@ function App() {
   const handleTaskEdit = (task) => {
     const originalTitle = getTaskTitle(task);
     const originalCompleted = getTaskCompleted(task);
+    const originalCategoryId = getTaskCategoryId(task);
 
     setTaskTitle(originalTitle);
     setIsCompleted(originalCompleted);
+    setTaskCategoryId(originalCategoryId);
     setEditingTaskId(task.id);
     setEditingTaskOriginal({
       title: originalTitle,
       completed: originalCompleted,
+      categoryId: originalCategoryId,
     });
     setTaskStatusMessage('');
   };
@@ -175,7 +220,7 @@ function App() {
   const handleToggleCompleted = async (task) => {
     try {
       await axios.patch(`${API_BASE_URL}/tasks/${task.id}`, {
-        done: !getTaskCompleted(task),
+        ...completedPayload(!getTaskCompleted(task)),
       });
       fetchTasks();
     } catch (error) {
@@ -203,7 +248,15 @@ function App() {
       if (editingCategoryId === id) {
         resetCategoryForm();
       }
+      if (categoryFilter === id) {
+        setCategoryFilter('all');
+      }
+      if (taskCategoryId === id) {
+        setTaskCategoryId('');
+      }
       fetchCategories();
+      // у задач удалённой категории category_id должен сброситься
+      fetchTasks();
     } catch (error) {
       console.error('Error deleting category:', error);
       setCategoryStatusMessage(`Ошибка: ${getErrorText(error)}`);
@@ -256,6 +309,21 @@ function App() {
                 </button>
               </div>
 
+              <label className="select-row">
+                <span>Категория</span>
+                <select
+                  value={taskCategoryId}
+                  onChange={(event) => setTaskCategoryId(event.target.value)}
+                >
+                  <option value="">Без категории</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {getCategoryName(category)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               {editingTaskId && (
                 <label className="checkbox-row">
                   <input
@@ -285,16 +353,36 @@ function App() {
               </div>
 
               <div className="stats">
-                <span className="stat-pill">Всего: {tasks.length}</span>
+                <span className="stat-pill">Всего: {visibleTasks.length}</span>
                 <span className="stat-pill">Активных: {pendingCount}</span>
                 <span className="stat-pill">Готово: {completedCount}</span>
               </div>
 
-              {tasks.length === 0 ? (
-                <div className="empty-state">Пока пусто. Добавьте первую задачу выше.</div>
+              <label className="select-row filter-row">
+                <span>Фильтр</span>
+                <select
+                  value={categoryFilter}
+                  onChange={(event) => setCategoryFilter(event.target.value)}
+                >
+                  <option value="all">Все категории</option>
+                  <option value="none">Без категории</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {getCategoryName(category)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {visibleTasks.length === 0 ? (
+                <div className="empty-state">
+                  {tasks.length === 0
+                    ? 'Пока пусто. Добавьте первую задачу выше.'
+                    : 'В этой категории задач нет.'}
+                </div>
               ) : (
                 <ul>
-                  {tasks.map((task, index) => (
+                  {visibleTasks.map((task, index) => (
                     <li key={task.id} style={{ '--item-index': index }}>
                       <button
                         className={getTaskCompleted(task) ? 'toggle done' : 'toggle'}
@@ -310,6 +398,13 @@ function App() {
                           {getTaskTitle(task)}
                         </span>
                         <span className="task-state">{getTaskCompleted(task) ? 'Выполнена' : 'В работе'}</span>
+                        <span
+                          className={
+                            getTaskCategoryId(task) ? 'category-badge' : 'category-badge category-badge-empty'
+                          }
+                        >
+                          {getTaskCategoryLabel(task, categoryNameById) || 'Без категории'}
+                        </span>
                       </div>
 
                       <div className="task-actions">
